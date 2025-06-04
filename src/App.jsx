@@ -1,15 +1,32 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useState, useEffect } from 'react'
 import "./App.css"
 import va from "./assets/ai.png"
 import speaking from './assets/speak.gif';
 import aigif from "./assets/aiVoice.gif"
 import { CiMicrophoneOn } from "react-icons/ci";
 import { datacontext } from './context/UserContext';
-;
 
 function App() {
   const { startListening, stopListening, isListening, isSpeaking, weather, currentTime } = useContext(datacontext);
   const [error, setError] = useState(null);
+  const [speakingGifLoaded, setSpeakingGifLoaded] = useState(false);
+  const [aiGifLoaded, setAiGifLoaded] = useState(false);
+
+  // Preload GIFs
+  useEffect(() => {
+    const preloadImage = (src, callback) => {
+      const img = new Image();
+      img.onload = () => callback(true);
+      img.onerror = () => {
+        console.error(`Failed to load GIF: ${src}`);
+        callback(false);
+      };
+      img.src = src;
+    };
+
+    preloadImage(speaking, setSpeakingGifLoaded);
+    preloadImage(aigif, setAiGifLoaded);
+  }, []);
 
   const handleClick = () => {
     try {
@@ -108,16 +125,31 @@ function App() {
             textAlign: 'center',
             width: '100%'
           }}>
-            <img 
-              src={speaking} 
-              alt="Listening Animation" 
-              style={{ 
-                width: 'clamp(60px, 20vw, 100px)', 
+            {!speakingGifLoaded ? (
+              <div style={{
+                width: 'clamp(60px, 20vw, 100px)',
                 height: 'clamp(60px, 20vw, 100px)',
                 margin: '20px auto 0',
-                filter: 'hue-rotate(180deg)'
-              }} 
-            />
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ color: '#ff4444' }}>Loading...</span>
+              </div>
+            ) : (
+              <img 
+                src={speaking} 
+                alt="Listening Animation" 
+                style={{ 
+                  width: 'clamp(60px, 20vw, 100px)', 
+                  height: 'clamp(60px, 20vw, 100px)',
+                  margin: '20px auto 0',
+                  filter: 'hue-rotate(180deg)'
+                }} 
+              />
+            )}
             <span style={{ 
               color: '#ff4444', 
               display: 'block',
@@ -130,15 +162,30 @@ function App() {
             textAlign: 'center',
             width: '100%'
           }}>
-            <img 
-              src={aigif} 
-              alt="Speaking Animation" 
-              style={{ 
-                width: 'clamp(60px, 20vw, 100px)', 
+            {!aiGifLoaded ? (
+              <div style={{
+                width: 'clamp(60px, 20vw, 100px)',
                 height: 'clamp(60px, 20vw, 100px)',
-                margin: '20px auto 0'
-              }} 
-            />
+                margin: '20px auto 0',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ color: '#4CAF50' }}>Loading...</span>
+              </div>
+            ) : (
+              <img 
+                src={aigif} 
+                alt="Speaking Animation" 
+                style={{ 
+                  width: 'clamp(60px, 20vw, 100px)', 
+                  height: 'clamp(60px, 20vw, 100px)',
+                  margin: '20px auto 0'
+                }} 
+              />
+            )}
             <span style={{ 
               color: '#4CAF50', 
               display: 'block',
