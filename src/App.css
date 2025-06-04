@@ -1,12 +1,79 @@
+@keyframes gradientMove {
+  0% {
+    transform: translate(-50%, 50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    transform: translate(-50%, -150%) scale(1);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateX(-50%) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #000000;
+}
+
 .main{
-    height:100vh;
+    background: #000000;
+    position: relative;
     overflow: hidden;
+    height:100vh;
     display: flex;
     align-items: center;
     justify-content: start;
     flex-direction: column;
     padding: 10px;
     gap: 10px;
+    width: 100%;
+    min-height: 100vh;
+}
+.main::before,
+.main::after {
+  content: '';
+  position: fixed;
+  bottom: -50%;
+  left: 50%;
+  width: 200vh;
+  height: 200vh;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.main::before {
+  background-image: radial-gradient(circle at center,
+    rgba(255, 0, 255, 0.15) 1.5px,
+    transparent 2px
+  );
+  background-size: 40px 40px;
+  animation: gradientMove 15s linear infinite;
+}
+
+.main::after {
+  background-image: radial-gradient(circle at center,
+    rgba(255, 100, 255, 0.1) 1px,
+    transparent 2px
+  );
+  background-size: 30px 30px;
+  animation: gradientMove 20s linear infinite;
 }
 #AIVoiceAssistant{
 height: 70%;
@@ -27,6 +94,7 @@ button{
     font-size: 20px;
     border-radius: 20px;
     border: none;
-    background-color: rgb(79,224,234);
+    background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+    color: white;
     box-shadow: 2px 2px 50px rgb(79,224,234);
 }
