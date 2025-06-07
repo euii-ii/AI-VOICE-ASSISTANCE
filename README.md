@@ -7,13 +7,11 @@ A modern, interactive AI-powered voice assistant built with React and Google's G
 <div align="center">
 
 ### Main Interface
-![AI Voice Assistant Interface](https://res.cloudinary.com/dporz9gz6/image/upload/v1749035935/WhatsApp_Image_2025-06-04_at_16.46.07_67d1d929_ec4zzz.jpg)
+![AI Voice Assistant Interface](https://res.cloudinary.com/dporz9gz6/image/upload/v1749048013/WhatsApp_Image_2025-06-04_at_20.09.17_45728c02_q9luph.jpg)
 
 ### Active Listening State
-![Listening Mode](https://res.cloudinary.com/dporz9gz6/image/upload/v1749035935/WhatsApp_Image_2025-06-04_at_16.47.04_4539fe94_casjiu.jpg)
+![Listening Mode](https://res.cloudinary.com/dporz9gz6/image/upload/v1749047955/Screenshot_42_qxawhr.png)
 
-### AI Response Display
-![AI Response](https://res.cloudinary.com/dporz9gz6/image/upload/v1749035936/WhatsApp_Image_2025-06-04_at_16.46.09_762c8468_kdztk5.jpg)
 
 </div>
 
