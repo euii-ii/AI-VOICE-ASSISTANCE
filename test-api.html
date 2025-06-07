@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Weather API</title>
+</head>
+<body>
+    <h1>Weather API Test</h1>
+    <button onclick="testWeatherAPI()">Test Weather API</button>
+    <div id="result"></div>
+
+    <script>
+        async function testWeatherAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                // Test coordinates for New York City
+                const lat = 40.7128;
+                const lon = -74.0060;
+                
+                const response = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <h3>Success!</h3>
+                        <p>Location: ${data.name}</p>
+                        <p>Temperature: ${Math.round(data.main.temp)}°C</p>
+                        <p>Weather: ${data.weather[0].description}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>Error</h3>
+                        <p>${data.error}</p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>Network Error</h3>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

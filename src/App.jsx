@@ -11,19 +11,31 @@ function App() {
     startListening,
     stopListening,
     stopSpeaking,
-    enableSpeechSynthesis,
-    testSpeech,
+    directSpeak,
+    openYouTube,
+    openGoogle,
+    openWebsite,
     isListening,
     isSpeaking,
     weather,
     currentTime,
     permissionGranted,
     autoStarted,
-    speechEnabled
+    speechEnabled,
+    enableWelcomeMessage,
+    toggleWelcomeMessage
   } = useContext(datacontext);
   const [error, setError] = useState(null);
   const [speakingGifLoaded, setSpeakingGifLoaded] = useState(false);
   const [aiGifLoaded, setAiGifLoaded] = useState(false);
+
+  // Clear any cached speech on component mount
+  useEffect(() => {
+    console.log('🧹 Clearing any cached speech and resetting state');
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
 
   // Preload GIFs
   useEffect(() => {
@@ -63,28 +75,37 @@ function App() {
       e.preventDefault();
       e.stopPropagation();
       stopSpeaking();
+    } else if (isListening) {
+      // Click to stop listening when already listening
+      console.log('🛑 Stopping listening...');
+      e.preventDefault();
+      e.stopPropagation();
+      stopListening();
     } else if (!isListening && permissionGranted && autoStarted) {
       // Click to start listening when not speaking and not already listening
-      console.log('Starting listening...');
+      console.log('✅ Starting listening...');
       e.preventDefault();
       e.stopPropagation();
       startListening();
-    } else {
-      console.log('Click conditions not met for starting listening');
     }
   };
 
-  // Force enable speech synthesis on component mount
-  useEffect(() => {
-    if (enableSpeechSynthesis) {
-      enableSpeechSynthesis();
-    }
-  }, [enableSpeechSynthesis]);
+
 
   return (
-    <div className="main" onClick={handleScreenClick} style={{
-      cursor: isSpeaking ? 'pointer' : (!isListening && permissionGranted && autoStarted ? 'pointer' : 'default')
-    }}>
+    <>
+      <style>
+        {`
+          @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+          }
+        `}
+      </style>
+      <div className="main" onClick={handleScreenClick} style={{
+        cursor: isSpeaking ? 'pointer' : (!isListening && permissionGranted && autoStarted ? 'pointer' : 'default')
+      }}>
       <div className="content-container" style={{
         display: 'flex',
         flexDirection: 'column',
@@ -112,6 +133,8 @@ function App() {
             Requesting microphone permission...
           </div>
         )}
+
+
 
 
 
@@ -200,6 +223,27 @@ function App() {
         )}
         {!isListening && !isSpeaking && autoStarted && permissionGranted && (
           <div style={{ textAlign: 'center', width: '100%' }}>
+            {/* Welcome message */}
+            <div style={{
+              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              border: '1px solid rgba(76, 175, 80, 0.3)',
+              padding: '15px',
+              borderRadius: '15px',
+              marginBottom: '20px',
+              width: '100%',
+              maxWidth: '350px',
+              margin: '0 auto 20px auto'
+            }}>
+              <p style={{
+                color: '#4CAF50',
+                margin: 0,
+                fontSize: 'clamp(0.9rem, 3vw, 1.1rem)',
+                fontWeight: '500'
+              }}>
+                👋 Hello! I'm your AI voice assistant.<br/>
+                I'm ready to help you. Double-tap or click anywhere to start listening.
+              </p>
+            </div>
             <button
               onClick={handleClick}
               style={{
@@ -219,7 +263,10 @@ function App() {
               Start Listening <CiMicrophoneOn />
             </button>
             <button
-              onClick={testSpeech}
+              onClick={() => {
+                console.log('💬 Testing speech');
+                directSpeak("Hello! I am your AI assistant. Can you hear me?");
+              }}
               style={{
                 cursor: 'pointer',
                 padding: '8px 16px',
@@ -227,60 +274,191 @@ function App() {
                 width: '100%',
                 maxWidth: '150px',
                 marginTop: '10px',
-                background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
+                background: 'linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)',
                 color: 'white',
                 border: '2px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '20px',
-                boxShadow: '0 0 10px rgba(76, 175, 80, 0.3)'
+                boxShadow: '0 0 10px rgba(156, 39, 176, 0.3)'
               }}
             >
-              Test Speech
+              💬 Test Speech
             </button>
+            <button
+              onClick={toggleWelcomeMessage}
+              style={{
+                cursor: 'pointer',
+                padding: '8px 16px',
+                fontSize: 'clamp(0.8rem, 2.5vw, 0.9rem)',
+                width: '100%',
+                maxWidth: '150px',
+                marginTop: '10px',
+                background: enableWelcomeMessage
+                  ? 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)'
+                  : 'linear-gradient(135deg, #757575 0%, #424242 100%)',
+                color: 'white',
+                border: '2px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '20px',
+                boxShadow: enableWelcomeMessage
+                  ? '0 0 10px rgba(76, 175, 80, 0.3)'
+                  : '0 0 10px rgba(117, 117, 117, 0.3)'
+              }}
+            >
+              {enableWelcomeMessage ? '🔊' : '🔇'} Welcome Message
+            </button>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              justifyContent: 'center',
+              marginTop: '15px',
+              maxWidth: '300px'
+            }}>
+              <button
+                onClick={openYouTube}
+                style={{
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                  fontSize: 'clamp(0.7rem, 2vw, 0.8rem)',
+                  background: 'linear-gradient(135deg, #FF0000 0%, #CC0000 100%)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '15px',
+                  boxShadow: '0 0 8px rgba(255, 0, 0, 0.3)'
+                }}
+              >
+                📺 YouTube
+              </button>
+              <button
+                onClick={openGoogle}
+                style={{
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                  fontSize: 'clamp(0.7rem, 2vw, 0.8rem)',
+                  background: 'linear-gradient(135deg, #4285F4 0%, #1976D2 100%)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '15px',
+                  boxShadow: '0 0 8px rgba(66, 133, 244, 0.3)'
+                }}
+              >
+                🔍 Google
+              </button>
+              <button
+                onClick={() => openWebsite('https://www.netflix.com', 'Netflix')}
+                style={{
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                  fontSize: 'clamp(0.7rem, 2vw, 0.8rem)',
+                  background: 'linear-gradient(135deg, #E50914 0%, #B20710 100%)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '15px',
+                  boxShadow: '0 0 8px rgba(229, 9, 20, 0.3)'
+                }}
+              >
+                🎬 Netflix
+              </button>
+            </div>
             <p style={{
               color: 'rgba(255, 255, 255, 0.7)',
               fontSize: 'clamp(0.8rem, 2.5vw, 0.9rem)',
-              marginTop: '10px',
-              marginBottom: '0'
+              marginTop: '15px',
+              marginBottom: '5px',
+              textAlign: 'center'
+            }}>
+              Say: "Open YouTube", "Open Google", "Open Netflix", etc.
+            </p>
+            <p style={{
+              color: 'rgba(255, 255, 255, 0.5)',
+              fontSize: 'clamp(0.7rem, 2vw, 0.8rem)',
+              marginTop: '5px',
+              marginBottom: '0',
+              textAlign: 'center'
             }}>
               Or double-tap/click anywhere to start listening
             </p>
           </div>
         )}
         {isListening && (
-          <div style={{ 
+          <div style={{
             textAlign: 'center',
             width: '100%'
           }}>
+            {/* Prominent listening indicator */}
+            <div style={{
+              backgroundColor: 'rgba(255, 68, 68, 0.1)',
+              border: '2px solid rgba(255, 68, 68, 0.5)',
+              padding: '20px',
+              borderRadius: '20px',
+              marginBottom: '20px',
+              width: '100%',
+              maxWidth: '350px',
+              margin: '0 auto 20px auto',
+              animation: 'pulse 2s infinite'
+            }}>
+              <p style={{
+                color: '#ff4444',
+                margin: 0,
+                fontSize: 'clamp(1rem, 4vw, 1.3rem)',
+                fontWeight: 'bold'
+              }}>
+                🎤 I'm Listening...
+              </p>
+              <p style={{
+                color: 'rgba(255, 68, 68, 0.8)',
+                margin: '5px 0 0 0',
+                fontSize: 'clamp(0.8rem, 3vw, 1rem)'
+              }}>
+                Speak now! Ask me anything.
+              </p>
+            </div>
             {!speakingGifLoaded ? (
               <div style={{
                 width: 'clamp(60px, 20vw, 100px)',
                 height: 'clamp(60px, 20vw, 100px)',
                 margin: '20px auto 0',
-                background: 'rgba(255, 255, 255, 0.1)',
+                background: 'rgba(255, 68, 68, 0.2)',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                border: '2px solid rgba(255, 68, 68, 0.5)'
               }}>
-                <span style={{ color: '#ff4444' }}>Loading...</span>
+                <span style={{ color: '#ff4444', fontWeight: 'bold' }}>🎤</span>
               </div>
             ) : (
-              <img 
-                src={speaking} 
-                alt="Listening Animation" 
-                style={{ 
-                  width: 'clamp(60px, 20vw, 100px)', 
+              <img
+                src={speaking}
+                alt="Listening Animation"
+                style={{
+                  width: 'clamp(60px, 20vw, 100px)',
                   height: 'clamp(60px, 20vw, 100px)',
                   margin: '20px auto 0',
-                  filter: 'hue-rotate(180deg)'
-                }} 
+                  filter: 'hue-rotate(180deg)',
+                  border: '2px solid rgba(255, 68, 68, 0.5)',
+                  borderRadius: '50%'
+                }}
               />
             )}
-            <span style={{ 
-              color: '#ff4444', 
-              display: 'block',
-              fontSize: 'clamp(0.9rem, 3vw, 1rem)'
-            }}>Listening...</span>
+            <button
+              onClick={() => {
+                console.log('🛑 Stop listening button clicked');
+                stopListening();
+              }}
+              style={{
+                cursor: 'pointer',
+                padding: '10px 20px',
+                fontSize: 'clamp(0.9rem, 3vw, 1rem)',
+                marginTop: '15px',
+                background: 'linear-gradient(135deg, #ff4444 0%, #cc0000 100%)',
+                color: 'white',
+                border: '2px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '20px',
+                boxShadow: '0 0 15px rgba(255, 68, 68, 0.3)'
+              }}
+            >
+              🛑 Stop Listening
+            </button>
           </div>
         )}
         {isSpeaking && (
@@ -321,6 +499,7 @@ function App() {
         )}
       </div>
     </div>
+    </>
   )
 }
 

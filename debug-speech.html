@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Speech Issues</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>Speech Synthesis Debug Tool</h1>
+    
+    <div>
+        <button onclick="testBasicSpeech()">Test Basic Speech</button>
+        <button onclick="testSpeechWithRetry()">Test Speech with Retry</button>
+        <button onclick="testMultipleSpeech()">Test Multiple Speech</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+    
+    <div id="logs"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        function testBasicSpeech() {
+            log('Testing basic speech synthesis...');
+            
+            if (!window.speechSynthesis) {
+                log('Speech synthesis not available!', 'error');
+                return;
+            }
+
+            const utterance = new SpeechSynthesisUtterance('Hello, this is a test message.');
+            
+            utterance.onstart = () => log('Speech started', 'success');
+            utterance.onend = () => log('Speech ended', 'success');
+            utterance.onerror = (e) => log(`Speech error: ${e.error}`, 'error');
+            
+            try {
+                window.speechSynthesis.speak(utterance);
+                log('speechSynthesis.speak() called');
+            } catch (error) {
+                log(`Error calling speak(): ${error.message}`, 'error');
+            }
+        }
+
+        function testSpeechWithRetry() {
+            log('Testing speech with retry logic...');
+            
+            let retryCount = 0;
+            const maxRetries = 2;
+            
+            function attemptSpeak() {
+                log(`Attempt ${retryCount + 1} to speak`);
+                
+                const utterance = new SpeechSynthesisUtterance(`Retry attempt ${retryCount + 1}`);
+                
+                utterance.onstart = () => log(`Attempt ${retryCount + 1} started`, 'success');
+                utterance.onend = () => log(`Attempt ${retryCount + 1} ended`, 'success');
+                utterance.onerror = (e) => {
+                    log(`Attempt ${retryCount + 1} error: ${e.error}`, 'error');
+                    
+                    if (e.error === 'interrupted' || e.error === 'not-allowed') {
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            log(`Retrying in 500ms...`);
+                            setTimeout(attemptSpeak, 500);
+                        } else {
+                            log('Max retries reached', 'error');
+                        }
+                    }
+                };
+                
+                window.speechSynthesis.speak(utterance);
+            }
+            
+            attemptSpeak();
+        }
+
+        function testMultipleSpeech() {
+            log('Testing multiple speech requests...');
+            
+            // Cancel any existing speech
+            window.speechSynthesis.cancel();
+            
+            const messages = [
+                'First message',
+                'Second message', 
+                'Third message'
+            ];
+            
+            messages.forEach((message, index) => {
+                setTimeout(() => {
+                    log(`Speaking message ${index + 1}: ${message}`);
+                    const utterance = new SpeechSynthesisUtterance(message);
+                    
+                    utterance.onstart = () => log(`Message ${index + 1} started`, 'success');
+                    utterance.onend = () => log(`Message ${index + 1} ended`, 'success');
+                    utterance.onerror = (e) => log(`Message ${index + 1} error: ${e.error}`, 'error');
+                    
+                    window.speechSynthesis.speak(utterance);
+                }, index * 1000);
+            });
+        }
+
+        // Log initial state
+        window.addEventListener('load', () => {
+            log('Page loaded');
+            log(`Speech synthesis available: ${!!window.speechSynthesis}`);
+            if (window.speechSynthesis) {
+                log(`Speaking: ${window.speechSynthesis.speaking}`);
+                log(`Pending: ${window.speechSynthesis.pending}`);
+                log(`Paused: ${window.speechSynthesis.paused}`);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -4,19 +4,16 @@ import run from '../gemini';
 // Create context with initial value
 export const datacontext = createContext({
     recognition: null,
-    speak: () => {},
     startListening: () => {},
     stopListening: () => {},
     stopSpeaking: () => {},
-    toggleContinuousListening: () => {},
-    enableSpeechSynthesis: () => {},
+    directSpeak: () => {},
     isListening: false,
     isSpeaking: false,
     weather: null,
     currentTime: '',
     permissionGranted: false,
     autoStarted: false,
-    isContinuousListening: true,
     speechEnabled: false
 });
 
@@ -27,636 +24,379 @@ function UserContext({children}) {
     const [currentTime, setCurrentTime] = useState('');
     const [permissionGranted, setPermissionGranted] = useState(false);
     const [autoStarted, setAutoStarted] = useState(false);
-    const [isContinuousListening, setIsContinuousListening] = useState(false);
     const [speechEnabled, setSpeechEnabled] = useState(false);
-    const intervalRef = useRef();
-    const speechQueue = useRef([]);
-    const isSpeechQueued = useRef(false);
-    const continuousListening = useRef(false);
-    const restartTimeout = useRef(null);
-    const speechInitialized = useRef(false);
-    const currentUtterance = useRef(null);
-    const speechInterrupted = useRef(false);
+    const [enableWelcomeMessage, setEnableWelcomeMessage] = useState(true); // Toggle for welcome message
+
     const recognitionTimeout = useRef(null);
+    const userHasInteracted = useRef(false);
+    const recognition = useRef(null);
+    const hasSpokenWelcome = useRef(false);
 
-    // Toggle continuous listening
-    const toggleContinuousListening = () => {
-        const newValue = !isContinuousListening;
-        setIsContinuousListening(newValue);
-        continuousListening.current = newValue;
+    // Initialize speech recognition
+    useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition.current = new SpeechRecognition();
+            recognition.current.continuous = false;
+            recognition.current.interimResults = false;
+            recognition.current.lang = 'en-US';
 
-        if (!newValue && isListening) {
-            // If disabling continuous listening and currently listening, stop
-            stopListening();
-        } else if (newValue && !isListening && !isSpeaking && permissionGranted) {
-            // If enabling continuous listening and not currently listening, start
-            setTimeout(() => startListening(), 100);
-        }
-    };
-
-    // Add voice loading state and ref
-    const [voicesLoaded, setVoicesLoaded] = useState(false);
-    const selectedVoice = useRef(null);
-
-    // Speech recognition event handlers
-    const handleRecognitionResult = async (e) => {
-        let currentIndex = e.resultIndex;
-        let transcript = e.results[currentIndex][0].transcript;
-
-        // Clear timeout when speech is detected
-        if (recognitionTimeout.current) {
-            clearTimeout(recognitionTimeout.current);
-            recognitionTimeout.current = null;
-        }
-
-        // Only process final results to avoid multiple triggers
-        if (e.results[currentIndex].isFinal) {
-            console.log("User said:", transcript);
-
-            // Temporarily pause listening while processing to avoid feedback
-            if (isListening) {
-                recognition.stop();
+            recognition.current.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                console.log('🎤 User said:', transcript);
                 setIsListening(false);
-            }
+                handleSpeech(transcript);
+            };
 
-            await handleSpeech(transcript); // Call handleSpeech first
-            if (!transcript.toLowerCase().includes('weather') && !transcript.toLowerCase().includes('time')) {
-                aiResponse(transcript); // Only call aiResponse if it's not a weather or time command
-            }
+            recognition.current.onend = () => {
+                setIsListening(false);
+            };
+
+            recognition.current.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                setIsListening(false);
+            };
         }
-    };
+    }, []);
 
-    const handleRecognitionEnd = () => {
-        setIsListening(false);
-        console.log('Speech recognition ended');
-        // No auto-restart listening - user needs to double-tap/click to start listening again
-    };
-
-    const handleRecognitionError = (event) => {
-        console.error('Speech recognition error:', event.error);
-        // All errors stop listening - no auto-restart, user needs to double-tap/click to start again
-        setIsListening(false);
-        console.log('Speech recognition stopped:', event.error);
-    };
-
-    // Initialize speech recognition with error handling
-    const initializeRecognition = () => {
-        try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                throw new Error('Speech recognition not supported');
-            }
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true; // Enable continuous listening
-            recognition.interimResults = true; // Get interim results
-            recognition.lang = 'en-US';
-            recognition.maxAlternatives = 1;
-
-            // Set timeouts to handle no-speech scenarios
-            if ('webkitSpeechRecognition' in window) {
-                // Chrome/Edge specific settings
-                recognition.serviceURI = 'wss://www.google.com/speech-api/v2/recognize';
-            }
-
-            // Attach event handlers immediately
-            recognition.onresult = handleRecognitionResult;
-            recognition.onend = handleRecognitionEnd;
-            recognition.onerror = handleRecognitionError;
-
-            return recognition;
-        } catch (error) {
-            console.error('Error initializing speech recognition:', error);
-            return null;
-        }
-    };
-
-    const recognition = useRef(initializeRecognition()).current;
-
-    // Debounced restart function to prevent rapid restart attempts
-    const debouncedStartListening = (delay = 0) => {
-        if (restartTimeout.current) {
-            clearTimeout(restartTimeout.current);
-        }
-
-        restartTimeout.current = setTimeout(() => {
-            startListening();
-            restartTimeout.current = null;
-        }, delay);
-    };
-
+    // Simple start listening function
     const startListening = () => {
-        console.log('startListening called - recognition:', !!recognition, 'isListening:', isListening);
-
-        if (!recognition) {
-            console.error('Speech recognition not initialized');
+        if (!recognition.current) {
+            console.error('Speech recognition not available');
             return;
         }
 
-        // Check if recognition is already running
         if (isListening) {
-            console.log('Recognition already running');
+            console.log('Already listening');
             return;
         }
 
-        // Clear any existing timeout
-        if (recognitionTimeout.current) {
-            clearTimeout(recognitionTimeout.current);
-            recognitionTimeout.current = null;
+        // Mark user interaction
+        userHasInteracted.current = true;
+        setSpeechEnabled(true);
+
+        // Speak welcome message on first interaction (if enabled)
+        if (!hasSpokenWelcome.current && enableWelcomeMessage) {
+            hasSpokenWelcome.current = true;
+            setTimeout(() => {
+                directSpeak("Hello! I'm your AI voice assistant. I'm ready to help you. You can ask me questions, request weather information, or ask for the time.");
+            }, 500);
+            return; // Don't start listening immediately after welcome
         }
 
         try {
-            console.log('Attempting to start speech recognition...');
-
-            // Additional check for recognition state
-            if (recognition.state === 'listening') {
-                console.log('Recognition state is already listening');
-                setIsListening(true);
-                return;
-            }
-
-            recognition.start();
+            recognition.current.start();
             setIsListening(true);
-            console.log('Speech recognition started successfully');
+            console.log('🎤 Started listening');
 
-            // Set a timeout to stop recognition if no speech is detected (no auto-restart)
+            // Auto-stop after 10 seconds
             recognitionTimeout.current = setTimeout(() => {
-                if (isListening) {
-                    console.log('Recognition timeout, stopping...');
-                    try {
-                        recognition.stop();
-                    } catch (e) {
-                        console.log('Error stopping recognition on timeout:', e);
-                    }
-                }
-            }, 10000); // 10 second timeout
-
+                stopListening();
+            }, 10000);
         } catch (error) {
             console.error('Error starting recognition:', error);
             setIsListening(false);
-
-            // If recognition is already started, just update state
-            if (error.name === 'InvalidStateError' && error.message.includes('already started')) {
-                console.log('Recognition was already started, updating state');
-                setIsListening(true);
-            }
         }
     };
 
+    // Simple stop listening function
     const stopListening = () => {
-        try {
-            // Clear recognition timeout
-            if (recognitionTimeout.current) {
-                clearTimeout(recognitionTimeout.current);
-                recognitionTimeout.current = null;
-            }
-
-            recognition.stop();
-            setIsListening(false);
-        } catch (error) {
-            console.error('Error stopping recognition:', error);
-        }
-    };
-
-    // Initialize speech synthesis with user interaction
-    const initializeSpeechSynthesis = () => {
-        if (speechInitialized.current) {
-            console.log('Speech synthesis already initialized');
-            return;
+        if (recognitionTimeout.current) {
+            clearTimeout(recognitionTimeout.current);
+            recognitionTimeout.current = null;
         }
 
-        try {
-            console.log('Initializing speech synthesis...');
-            // Force enable speech synthesis immediately
-            speechInitialized.current = true;
-            setSpeechEnabled(true);
-            console.log('Speech synthesis force-enabled');
-
-            // Create a silent utterance to test and initialize
-            const testUtterance = new SpeechSynthesisUtterance(' ');
-            testUtterance.volume = 0.01; // Very low volume instead of 0
-            testUtterance.rate = 10;
-
-            // Add event listeners to test utterance
-            testUtterance.onstart = () => {
-                console.log('Test utterance started - speech synthesis is working');
-            };
-
-            testUtterance.onend = () => {
-                console.log('Test utterance ended - speech synthesis initialized');
-            };
-
-            testUtterance.onerror = (event) => {
-                console.log('Test utterance error:', event.error);
-            };
-
-            // Speak the test utterance
-            window.speechSynthesis.speak(testUtterance);
-
-        } catch (error) {
-            console.error('Failed to initialize speech synthesis:', error);
-            // Still enable it even if there's an error
-            speechInitialized.current = true;
-            setSpeechEnabled(true);
-        }
-    };
-
-    // Enable speech synthesis through user interaction
-    const enableSpeechSynthesis = () => {
-        initializeSpeechSynthesis();
-    };
-
-    // Test speech synthesis function
-    const testSpeech = () => {
-        console.log('Testing speech synthesis...');
-        speak("This is a test of the speech synthesis system.");
-    };
-
-    // Request microphone permission and auto-start
-    const requestPermissionAndStart = async () => {
-        try {
-            // Initialize speech synthesis first
-            initializeSpeechSynthesis();
-
-            // Request microphone permission
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
-            setPermissionGranted(true);
-
-            // Enable speech synthesis immediately
-            setSpeechEnabled(true);
-            speechInitialized.current = true;
-
-            // Auto-start with welcome message only (no continuous listening)
-            setTimeout(() => {
-                setAutoStarted(true);
-                // Delay the welcome message to ensure speech synthesis is ready
-                setTimeout(() => {
-                    console.log('Attempting to speak welcome message...');
-                    speak("Hello! I'm your AI voice assistant. I'm ready to help you. Double-tap or click anywhere to start listening.");
-                }, 1000); // Increased delay to ensure everything is ready
-            }, 1000);
-        } catch (error) {
-            console.error('Microphone permission denied:', error);
-            setPermissionGranted(false);
-        }
-    };
-
-    useEffect(() => {
-        if (!window.speechSynthesis) {
-            console.error('Speech synthesis not supported');
-            return;
-        }
-
-        const loadVoices = () => {
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) {
-                const femaleVoice = voices.find(voice =>
-                    voice.lang === 'en-US' && voice.name.includes('Female')
-                ) || voices.find(voice =>
-                    voice.lang.startsWith('en')
-                ) || voices[0];
-
-                selectedVoice.current = femaleVoice;
-                setVoicesLoaded(true);
-            }
-        };
-
-        loadVoices();
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-
-        // Force enable speech when voices are loaded
-        if (voicesLoaded && !speechInitialized.current) {
-            console.log('Voices loaded, force enabling speech synthesis');
-            speechInitialized.current = true;
-            setSpeechEnabled(true);
-        }
-
-        // Auto-start when voices are loaded and permission not yet requested
-        if (voicesLoaded && !permissionGranted && !autoStarted) {
-            requestPermissionAndStart();
-        }
-
-        return () => {
-            window.speechSynthesis.cancel();
-        };
-    }, [voicesLoaded, permissionGranted, autoStarted]);
-
-    const processSpeechQueue = () => {
-        if (speechQueue.current.length === 0 || isSpeechQueued.current) {
-            return;
-        }
-
-        // Clear any interrupted state
-        speechInterrupted.current = false;
-        isSpeechQueued.current = true;
-        const utterance = speechQueue.current[0];
-        currentUtterance.current = utterance;
-
-        const startSpeaking = () => {
+        if (recognition.current && isListening) {
             try {
-                console.log('Starting speech synthesis for:', utterance.text);
-
-                // Ensure speech synthesis is ready
-                if (window.speechSynthesis.paused) {
-                    window.speechSynthesis.resume();
-                }
-
-                // Force enable speech if not already enabled
-                if (!speechInitialized.current) {
-                    speechInitialized.current = true;
-                    setSpeechEnabled(true);
-                }
-
-                // Just speak the utterance directly
-                window.speechSynthesis.speak(utterance);
-                console.log('Speech synthesis started');
+                recognition.current.stop();
             } catch (error) {
-                console.error('Speech synthesis error:', error);
-                isSpeechQueued.current = false;
-                setIsSpeaking(false);
+                console.error('Error stopping recognition:', error);
             }
+        }
+        setIsListening(false);
+        console.log('🛑 Stopped listening');
+    };
+
+    // Simple speech synthesis function
+    const directSpeak = (text) => {
+        console.log('🔊 Speaking:', text);
+
+        // Only speak if user has interacted
+        if (!userHasInteracted.current) {
+            console.log('🚫 Blocking speech - no user interaction yet');
+            return;
+        }
+
+        if (!window.speechSynthesis) {
+            console.error('Speech synthesis not available');
+            return;
+        }
+
+        // Cancel any existing speech
+        window.speechSynthesis.cancel();
+
+        // Create utterance
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.volume = 1;
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.lang = 'en-US';
+
+        utterance.onstart = () => {
+            console.log('✅ Speech started');
+            setIsSpeaking(true);
         };
 
         utterance.onend = () => {
-            // Only process if this utterance wasn't interrupted
-            if (!speechInterrupted.current && currentUtterance.current === utterance) {
-                speechQueue.current.shift();
-                isSpeechQueued.current = false;
-                currentUtterance.current = null;
-
-                if (speechQueue.current.length === 0) {
-                    setIsSpeaking(false);
-                    // No auto-restart listening - user needs to double-tap/click to start listening again
-                } else {
-                    setTimeout(processSpeechQueue, 250); // Add delay between chunks
-                }
-            } else {
-                console.log('Speech utterance ended but was interrupted, skipping queue processing');
-            }
+            console.log('✅ Speech ended');
+            setIsSpeaking(false);
         };
 
         utterance.onerror = (event) => {
-            console.error('Speech error:', event.error, event);
-            isSpeechQueued.current = false;
-            currentUtterance.current = null;
-
-            if (event.error === 'interrupted') {
-                // Speech was interrupted - this is normal behavior
-                console.log('Speech interrupted, marking as interrupted and continuing');
-                speechInterrupted.current = true;
-
-                // Remove the interrupted utterance from queue
-                if (speechQueue.current.length > 0) {
-                    speechQueue.current.shift();
-                }
-
-                // Continue with next utterance if available
-                if (speechQueue.current.length > 0) {
-                    setTimeout(() => {
-                        processSpeechQueue();
-                    }, 100);
-                } else {
-                    setIsSpeaking(false);
-                    // Restart listening after interruption
-                    if (continuousListening.current && permissionGranted && !isListening) {
-                        debouncedStartListening(200);
-                    }
-                }
-            } else if (event.error === 'not-allowed') {
-                // Speech synthesis blocked - force enable and continue
-                console.log('Speech blocked, force enabling and continuing');
-                speechInitialized.current = true;
-                setSpeechEnabled(true);
-
-                // Continue with next utterance if available
-                if (speechQueue.current.length > 0) {
-                    setTimeout(() => {
-                        processSpeechQueue();
-                    }, 100);
-                } else {
-                    setIsSpeaking(false);
-                    // Restart listening after speech issue
-                    if (continuousListening.current && permissionGranted && !isListening) {
-                        debouncedStartListening(200);
-                    }
-                }
-            } else {
-                // Other errors - retry after delay
-                setTimeout(() => {
-                    if (speechQueue.current.length > 0) {
-                        processSpeechQueue();
-                    } else {
-                        setIsSpeaking(false);
-                    }
-                }, 1000);
-            }
+            console.error('❌ Speech error:', event.error);
+            setIsSpeaking(false);
         };
 
-        startSpeaking();
+        // Speak
+        window.speechSynthesis.speak(utterance);
     };
 
-    function speak(text) {
-        console.log('Speak function called with text:', text);
-
-        if (!window.speechSynthesis) {
-            console.log('Speech synthesis not available');
-            return;
-        }
-
-        // Force enable speech synthesis if not already enabled
-        if (!speechInitialized.current) {
-            console.log('Force enabling speech synthesis in speak function');
-            speechInitialized.current = true;
-            setSpeechEnabled(true);
-        }
-
-        // Properly cancel any ongoing speech and mark as interrupted
-        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-            console.log('Canceling existing speech');
-            speechInterrupted.current = true;
-            currentUtterance.current = null;
-            window.speechSynthesis.cancel();
-
-            // Wait a moment for cancellation to complete
-            setTimeout(() => {
-                speechInterrupted.current = false;
-            }, 50);
-        }
-
-        speechQueue.current = [];
-        isSpeechQueued.current = false;
-
-        const chunks = text.match(/[^\.!\?]+[\.!\?]+/g) || [text];
-        console.log('Text chunks:', chunks);
-
-        chunks.forEach((chunk) => {
-            const utterance = new SpeechSynthesisUtterance(chunk.trim());
-
-            if (selectedVoice.current) {
-                utterance.voice = selectedVoice.current;
-                console.log('Using voice:', selectedVoice.current.name);
-            } else {
-                console.log('No voice selected, using default');
-            }
-
-            utterance.volume = 1;
-            utterance.rate = 0.9;
-            utterance.pitch = 1.2;
-            utterance.lang = 'en-US';
-
-            speechQueue.current.push(utterance);
-        });
-
-        console.log('Setting isSpeaking to true and starting speech queue');
-        setIsSpeaking(true);
-        processSpeechQueue();
-    }
-
-    // Function to stop speaking immediately
+    // Stop speaking function
     const stopSpeaking = () => {
-        // Mark as interrupted before canceling
-        speechInterrupted.current = true;
-        currentUtterance.current = null;
-
         window.speechSynthesis.cancel();
-        speechQueue.current = [];
-        isSpeechQueued.current = false;
         setIsSpeaking(false);
-
-        // Reset interrupted state after a brief delay
-        setTimeout(() => {
-            speechInterrupted.current = false;
-        }, 100);
-
-        // No auto-restart listening - user needs to double-tap/click to start listening again
+        console.log('🛑 Stopped speaking');
     };
 
-    async function aiResponse(prompt){
-        let text = await run(prompt);
-        console.log(text);
-        speak(text); // Speak the AI response
-    }
+    // AI response function
+    const aiResponse = async (prompt) => {
+        try {
+            console.log('🤖 AI Response for:', prompt);
 
+            // Add current date and time context to the prompt
+            const now = new Date();
+            const currentDateTime = now.toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZoneName: 'short'
+            });
+
+            const contextualPrompt = `Current date and time: ${currentDateTime}
+
+User question: ${prompt}
+
+Please provide an accurate response based on the current date and time provided above. If the user asks about today's date, time, or anything time-sensitive, use the current information provided.`;
+
+            console.log('🕒 Sending prompt with current context:', contextualPrompt);
+
+            const text = await run(contextualPrompt);
+            console.log('✅ AI response received:', text);
+
+            if (text && text.trim().length > 0) {
+                directSpeak(text);
+            } else {
+                directSpeak("I'm sorry, I didn't understand that. Could you please try again?");
+            }
+        } catch (error) {
+            console.error('❌ Error in AI response:', error);
+            directSpeak("I'm sorry, I'm having trouble connecting to my AI service. Please try again.");
+        }
+    };
+
+    // Handle speech input
+    const handleSpeech = async (transcript) => {
+        try {
+            const lowerTranscript = transcript.toLowerCase();
+            console.log('🔍 Processing:', lowerTranscript);
+
+            if (lowerTranscript.includes('weather')) {
+                const weatherInfo = await getWeather();
+                directSpeak(weatherInfo);
+            } else if (lowerTranscript.includes('time') && !lowerTranscript.includes('what time') && !lowerTranscript.includes('current time')) {
+                const timeInfo = getTime();
+                directSpeak(timeInfo);
+            } else if (lowerTranscript.includes('date') || lowerTranscript.includes('today') || lowerTranscript.includes('what day')) {
+                const dateInfo = getDate();
+                directSpeak(dateInfo);
+            } else if (lowerTranscript.includes('open youtube') || (lowerTranscript.includes('youtube') && lowerTranscript.includes('open'))) {
+                openYouTube();
+            } else if (lowerTranscript.includes('open google') || (lowerTranscript.includes('google') && lowerTranscript.includes('open'))) {
+                openGoogle();
+            } else if (lowerTranscript.includes('open facebook') || (lowerTranscript.includes('facebook') && lowerTranscript.includes('open'))) {
+                openWebsite('https://www.facebook.com', 'Facebook');
+            } else if (lowerTranscript.includes('open twitter') || (lowerTranscript.includes('twitter') && lowerTranscript.includes('open'))) {
+                openWebsite('https://www.twitter.com', 'Twitter');
+            } else if (lowerTranscript.includes('open instagram') || (lowerTranscript.includes('instagram') && lowerTranscript.includes('open'))) {
+                openWebsite('https://www.instagram.com', 'Instagram');
+            } else if (lowerTranscript.includes('open netflix') || (lowerTranscript.includes('netflix') && lowerTranscript.includes('open'))) {
+                openWebsite('https://www.netflix.com', 'Netflix');
+            } else if (lowerTranscript.includes('open amazon') || (lowerTranscript.includes('amazon') && lowerTranscript.includes('open'))) {
+                openWebsite('https://www.amazon.com', 'Amazon');
+            } else {
+                // Send to AI with current context
+                await aiResponse(transcript);
+            }
+        } catch (error) {
+            console.error('❌ Error handling speech:', error);
+            directSpeak("Sorry, I encountered an error processing your request.");
+        }
+    };
+
+    // Get weather function
     const getWeather = async () => {
         try {
             const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject);
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    timeout: 10000,
+                    enableHighAccuracy: false
+                });
             });
-            
-            const API_KEY = '469781dd737b4f00e3bfe9d280ec1ad3';
-            // Use cors-anywhere or OpenWeather's HTTPS endpoint
-            const response = await fetch(
-                `https://cors-anywhere.herokuapp.com/https://api.openweathermap.org/data/2.5/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&appid=${API_KEY}&units=metric`,
-                {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Origin': 'http://localhost:5173',
-                        'Accept': 'application/json'
-                    },
-                    mode: 'cors' // Explicitly set CORS mode
-                }
-            );
 
+            const apiUrl = `/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`;
+            const response = await fetch(apiUrl);
+            
             if (!response.ok) {
                 throw new Error(`Weather API Error: ${response.status}`);
             }
 
             const data = await response.json();
-            console.log('Weather data:', data);
-            
-            if (!data.main || !data.weather) {
-                throw new Error('Invalid weather data format');
-            }
-
             setWeather(data);
             return `The current temperature is ${Math.round(data.main.temp)}°C with ${data.weather[0].description}`;
         } catch (error) {
             console.error('Error fetching weather:', error);
-            // More descriptive error message
-            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                return "Sorry, there was a network error. Please check your internet connection.";
-            }
-            return "Sorry, I couldn't fetch the weather information. CORS error occurred.";
+            return "Sorry, I couldn't fetch the weather information right now.";
         }
     };
 
+    // Get time function
     const getTime = () => {
         const now = new Date();
-        const timeString = now.toLocaleTimeString();
+        const timeString = now.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
         setCurrentTime(timeString);
         return `The current time is ${timeString}`;
     };
 
-    const handleSpeech = async (transcript) => {
-        const lowerTranscript = transcript.toLowerCase();
-
-        if (lowerTranscript.includes('weather')) {
-            const weatherInfo = await getWeather();
-            speak(weatherInfo);
-            return true;
-        } else if (lowerTranscript.includes('time')) {
-            const timeInfo = getTime();
-            speak(timeInfo);
-            return true;
-        }
-        return false;
+    // Get date function
+    const getDate = () => {
+        const now = new Date();
+        const dateString = now.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        return `Today is ${dateString}`;
     };
 
-    // Monitor and maintain continuous listening and speech state
+    // Open YouTube function
+    const openYouTube = () => {
+        try {
+            console.log('🎥 Opening YouTube...');
+            window.open('https://www.youtube.com', '_blank');
+            directSpeak("Opening YouTube for you!");
+        } catch (error) {
+            console.error('❌ Error opening YouTube:', error);
+            directSpeak("Sorry, I couldn't open YouTube. Please try again.");
+        }
+    };
+
+    // Open Google function
+    const openGoogle = () => {
+        try {
+            console.log('🔍 Opening Google...');
+            window.open('https://www.google.com', '_blank');
+            directSpeak("Opening Google for you!");
+        } catch (error) {
+            console.error('❌ Error opening Google:', error);
+            directSpeak("Sorry, I couldn't open Google. Please try again.");
+        }
+    };
+
+    // Generic website opening function
+    const openWebsite = (url, siteName) => {
+        try {
+            console.log(`🌐 Opening ${siteName}...`);
+            window.open(url, '_blank');
+            directSpeak(`Opening ${siteName} for you!`);
+        } catch (error) {
+            console.error(`❌ Error opening ${siteName}:`, error);
+            directSpeak(`Sorry, I couldn't open ${siteName}. Please try again.`);
+        }
+    };
+
+    // Request microphone permission
+    const requestPermissionAndStart = async () => {
+        try {
+            console.log('Requesting microphone permission...');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+            setPermissionGranted(true);
+            setAutoStarted(true);
+            console.log('✅ Microphone permission granted');
+        } catch (error) {
+            console.error('❌ Permission request failed:', error);
+            setPermissionGranted(false);
+            setAutoStarted(true); // Still show the interface
+        }
+    };
+
+    // Auto-start when component mounts
+    useEffect(() => {
+        if (!permissionGranted && !autoStarted) {
+            requestPermissionAndStart();
+        }
+    }, [permissionGranted, autoStarted]);
+
+    // Update time every second
     useEffect(() => {
         const interval = setInterval(() => {
-            // Check if speech synthesis is stuck or interrupted
-            if (isSpeaking && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-                console.log('Speech synthesis appears to be stuck, attempting recovery');
-
-                // Check if we have queued speech
-                if (speechQueue.current.length > 0) {
-                    // Reset speech state and try to continue
-                    isSpeechQueued.current = false;
-                    processSpeechQueue();
-                } else {
-                    // No more speech in queue, stop speaking state
-                    setIsSpeaking(false);
-                    currentUtterance.current = null;
-                    speechInterrupted.current = false;
-                }
-            }
-
-            // Update current time every second
             const now = new Date();
-            setCurrentTime(now.toLocaleTimeString());
-        }, 1000); // Update time every second
+            setCurrentTime(now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            }));
+        }, 1000);
 
-        return () => {
-            clearInterval(interval);
-            // Properly cleanup speech synthesis
-            speechInterrupted.current = true;
-            currentUtterance.current = null;
-            speechQueue.current = [];
-            isSpeechQueued.current = false;
-            window.speechSynthesis.cancel();
-        };
+        return () => clearInterval(interval);
     }, []);
 
-    // Move value object outside of return
+    // Toggle welcome message function
+    const toggleWelcomeMessage = () => {
+        setEnableWelcomeMessage(!enableWelcomeMessage);
+        hasSpokenWelcome.current = false; // Reset so it can be spoken again
+    };
+
+    // Context value
     const contextValue = {
-        recognition,
-        speak,
+        recognition: recognition.current,
         startListening,
         stopListening,
         stopSpeaking,
-        toggleContinuousListening,
-        enableSpeechSynthesis,
-        testSpeech,
+        directSpeak,
+        aiResponse,
+        openYouTube,
+        openGoogle,
+        openWebsite,
         isListening,
         isSpeaking,
         weather,
         currentTime,
         permissionGranted,
         autoStarted,
-        isContinuousListening,
-        speechEnabled
+        speechEnabled,
+        enableWelcomeMessage,
+        toggleWelcomeMessage
     };
 
     return (
